@@ -12,7 +12,7 @@ Global Path Planning부터 CARLA 시뮬레이션까지, 자율주행 Planning Pi
 |-----|------|------|------|
 | Day 1 | `01_global_planning/` | Dijkstra, A*, Hybrid A* | 3h |
 | Day 2 | `02_trajectory_planning/` | Spline, Frenet, Velocity, Local Planner, Frenet Optimal, RRT | 4h |
-| Day 3 | `03_carla_simulation/` | CARLA 기본, Traffic Manager, 판단 시나리오 | - |
+| Day 3 | `03_carla_simulation/` | CARLA 구조·세팅, 기본 실습, Traffic Manager, 판단 시나리오(TTC), AI Planning 개요 | - |
 
 ---
 
@@ -43,7 +43,7 @@ pip install -r requirements/requirements_carla.txt
 planning_pipeline_workshop/
 ├── 01_global_planning/       ← Day 1 실습 노트북
 ├── 02_trajectory_planning/   ← Day 2 실습 노트북
-├── 03_carla_simulation/      ← Day 3 실습 노트북 + scripts/
+├── 03_carla_simulation/      ← Day 3 실습 노트북(이론·관찰, 비동기) + scripts/(주행·시나리오, 동기 .py)
 ├── utils/                    ← 공통 모듈
 ├── scenarios/                ← 공통 맵/시나리오
 ├── references/               ← PythonRobotics 원본 (비교용)
