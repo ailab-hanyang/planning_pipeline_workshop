@@ -1,0 +1,7 @@
+# CARLA Python 클라이언트는 pip으로 설치하지 않음
+# CARLA 설치 경로에서 아래 명령으로 등록:
+#   pip install /opt/carla-simulator/PythonAPI/carla/dist/carla-0.9.16-cp310-cp310-linux_x86_64.whl
+# (경로는 설치 환경에 따라 다를 수 있음)
+
+pygame>=2.6
+opencv-python>=4.10
