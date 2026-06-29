@@ -2,7 +2,7 @@
 Visualization helpers for step02_longitudinal_motion_planning notebook.
 
 긴 시각화 코드를 노트북에서 분리. 노트북은 각 함수를 한 줄로 호출.
-경로(x, y) 위에 슬라이드와 같은 장면 요소(제한속도 표지판/방지턱/정지선·신호등/선행차/자차)를
+경로(x, y) 위에 슬라이드와 같은 장면 요소(제한속도 표지판/30 구간/방지턱/정지선/자차)를
 draw_scene 하나로 그려 모든 시각화의 배경으로 재사용한다.
 plot 제목/축라벨은 영어(matplotlib 한글 폰트 깨짐 방지). patches 만 사용(외부 이미지 없음).
 
@@ -21,6 +21,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 
 MS2KPH = 3.6                       # m/s -> km/h
 SPEED_CMAP = 'RdYlGn'              # 낮은 속도 = 빨강, 높은 속도 = 초록
+# 모든 프로파일 그래프의 가로축: 경로를 따라 잰 거리(arc length s). 명시적으로 설명.
+S_XLABEL = 'arc length s [m]  (distance along the path)'
 
 
 # ---------------------------------------------------------------------------
@@ -108,25 +110,15 @@ def _add_bump(ax, x, y, yaw):
             fontsize=11, fontweight='bold', color='red', zorder=8)
 
 
-def _add_stop(ax, x, y, yaw, half_width=5.0):
-    """정지선(경로와 수직인 굵은 선분) + 신호등(적색 점등)."""
+def _add_stop(ax, x, y, yaw, half_width=6.0):
+    """정지선(경로와 수직인 굵은 빨간 선분) + STOP 라벨."""
     nx, ny = _perp(yaw)
     ax.plot([x - nx * half_width, x + nx * half_width],
             [y - ny * half_width, y + ny * half_width],
-            color='white', lw=6, solid_capstyle='butt', zorder=4)
-    ax.plot([x - nx * half_width, x + nx * half_width],
-            [y - ny * half_width, y + ny * half_width],
-            color='dimgray', lw=6, ls=(0, (4, 3)), solid_capstyle='butt', zorder=4)
-    # 신호등: 경로 위쪽에 세로 박스 + 빨/노/초 (적색 점등)
-    bx, by = x + nx * 11, y + ny * 11
-    ax.add_patch(FancyBboxPatch((bx - 1.7, by - 4.6), 3.4, 9.2,
-                                boxstyle='round,pad=0,rounding_size=0.8',
-                                fc='#222222', ec='black', lw=1.2, zorder=7))
-    for k, (color, lit) in enumerate([('red', True), ('gold', False), ('limegreen', False)]):
-        cy = by + 2.9 - k * 2.9
-        ax.add_patch(Circle((bx, cy), 1.05,
-                            fc=color if lit else '#555555',
-                            ec='black', lw=0.6, zorder=8))
+            color='red', lw=5, solid_capstyle='butt', zorder=5)
+    ax.annotate('STOP', xy=(x + nx * 9, y + ny * 9), ha='center', va='center',
+                fontsize=10, fontweight='bold', color='red',
+                bbox=dict(boxstyle='round,pad=0.2', fc='white', ec='red'), zorder=8)
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +136,15 @@ def draw_scene(ax, scene, v_kph=None, show_cbar=True, show_icons=True):
 
     ax.plot(x, y, '-', color='0.55', lw=2.2, zorder=1)
 
+    # 30 km/h 제한속도 구간을 도로 위에 색으로 표시 (구간이 어디인지 한눈에)
+    in_zone = (scene['s'] >= scene['limit30_start']) & (scene['s'] <= scene['limit30_end'])
+    ax.plot(np.asarray(x)[in_zone], np.asarray(y)[in_zone], '-', color='royalblue',
+            lw=12, alpha=0.30, solid_capstyle='round', zorder=1.2)
+    mzx, mzy, mzyaw = _pose_at_s(scene, 0.5 * (scene['limit30_start'] + scene['limit30_end']))
+    nzx, nzy = _perp(mzyaw)
+    ax.annotate('30 zone', xy=(mzx - nzx * 7, mzy - nzy * 7), ha='center', va='center',
+                fontsize=9, fontweight='bold', color='royalblue', zorder=8)
+
     if v_kph is not None:
         scatter = ax.scatter(x, y, c=v_kph, cmap=SPEED_CMAP, vmin=0,
                              vmax=scene['v_limit_kph'], s=22, zorder=2)
@@ -152,21 +153,21 @@ def draw_scene(ax, scene, v_kph=None, show_cbar=True, show_icons=True):
             cbar.set_label('speed [km/h]')
 
     if show_icons:
-        # 제한속도 표지판 (제한구간 시작부)
-        sx, sy, syaw = _pose_at_s(scene, scene['s'][-1] * 0.06)
+        # 제한속도 표지판 60 (출발부)
+        sx, sy, syaw = _pose_at_s(scene, scene['s'][-1] * 0.05)
         _add_speed_sign(ax, sx, sy, syaw, str(int(scene['v_limit_kph'])))
+        # 제한속도 표지판 30 (30 km/h 구간 시작부)
+        zx, zy, zyaw = _pose_at_s(scene, scene['limit30_start'])
+        _add_speed_sign(ax, zx, zy, zyaw, str(int(scene['limit30_kph'])))
         # 방지턱
         bx, by, byaw = _pose_at_s(scene, 0.5 * (scene['bump_start'] + scene['bump_end']))
         _add_bump(ax, bx, by, byaw)
-        # 정지선 / 신호등
+        # 정지선
         tx, ty, tyaw = _pose_at_s(scene, scene['s_stop'])
         _add_stop(ax, tx, ty, tyaw)
-        # 선행 차량
-        lx, ly, lyaw = _pose_at_s(scene, scene['s_lead'])
-        _add_car(ax, lx, ly, lyaw, '#d65f5f', label=f"v_lead = {int(scene['v_lead_kph'])}")
         # 자차(ego) — 시작 위치
         ex, ey, eyaw = _pose_at_s(scene, 0.0)
-        _add_car(ax, ex, ey, eyaw, '#3b6fb0', label='v_ego')
+        _add_car(ax, ex, ey, eyaw, '#3b6fb0', label='ego')
 
     ax.set_aspect('equal')
     ax.set_xlabel('x [m]'); ax.set_ylabel('y [m]')
@@ -175,7 +176,7 @@ def draw_scene(ax, scene, v_kph=None, show_cbar=True, show_icons=True):
     return scatter
 
 
-def show_scene(scene, v_kph=None, title=None, figsize=(12, 6.5)):
+def show_scene(scene, v_kph=None, title=None, figsize=(12, 4.2)):
     """draw_scene 를 단독 figure 로 출력 (경로 점을 속도로 색칠)."""
     fig, ax = plt.subplots(figsize=figsize)
     draw_scene(ax, scene, v_kph=v_kph)
@@ -185,57 +186,59 @@ def show_scene(scene, v_kph=None, title=None, figsize=(12, 6.5)):
 
 
 # ---------------------------------------------------------------------------
-# 섹션별 그래프
+# scene(상단) + metric(하단) 을 세로로 쌓는 공통 레이아웃
 # ---------------------------------------------------------------------------
-def _mark_events(ax, scene, mark_lead=True):
-    """s 축 그래프에 방지턱/정지선/선행차 red point 위치 표시."""
-    ax.axvspan(scene['bump_start'], scene['bump_end'], color='orange', alpha=0.18,
+# ---------------------------------------------------------------------------
+# 섹션별 그래프 (각 plot 은 경로 거리 s [m] 를 가로축으로 하는 단독 그래프)
+# ---------------------------------------------------------------------------
+def _mark_events(ax, scene):
+    """s 축 그래프에 30 km/h 구간 / 방지턱 / 정지선 위치 표시."""
+    ax.axvspan(scene['limit30_start'], scene['limit30_end'], color='tab:blue', alpha=0.10,
+               label='30 km/h zone')
+    ax.axvspan(scene['bump_start'], scene['bump_end'], color='orange', alpha=0.20,
                label='bump zone')
     ax.axvline(scene['s_stop'], color='red', ls='--', lw=1.5, label='stop line')
-    if mark_lead:
-        red_point = scene['s_lead'] - scene['d_buf']
-        ax.axvline(red_point, color='crimson', ls=':', lw=1.5, label='lead red point')
 
 
 def plot_curvature(scene, kappa):
-    """s vs 곡률 κ. 곡선 구간(κ 큰 곳)이 한눈에 보이게."""
+    """곡률 κ vs 경로 거리 s. 곡선 구간(κ 큰 곳)이 한눈에 보이게."""
     s = scene['s']
-    radius = 1.0 / np.clip(np.abs(kappa), 1e-4, None)
-
-    fig, (ax_k, ax_r) = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
-    ax_k.plot(s, kappa, color='tab:purple', lw=2)
-    ax_k.fill_between(s, kappa, alpha=0.15, color='tab:purple')
-    ax_k.axhline(0, color='gray', lw=0.8)
-    ax_k.set_ylabel(r'curvature $\kappa$ [1/m]')
-    ax_k.set_title('Curvature along the path (large |kappa| = sharp curve)')
-    ax_k.grid(True, alpha=0.3)
-
-    ax_r.plot(s, np.minimum(radius, 200), color='tab:blue', lw=2)
-    ax_r.set_ylabel('radius R = 1/|kappa| [m]\n(capped at 200)')
-    ax_r.set_xlabel('arc length s [m]')
-    ax_r.grid(True, alpha=0.3)
+    fig, ax = plt.subplots(figsize=(11, 3.8))
+    ax.plot(s, kappa, color='tab:purple', lw=2)
+    ax.fill_between(s, kappa, alpha=0.15, color='tab:purple')
+    ax.axhline(0, color='gray', lw=0.8)
+    ax.set_xlabel(S_XLABEL); ax.set_ylabel(r'curvature $\kappa$ [1/m]')
+    ax.set_title('Curvature along the path (large |kappa| = sharp curve)')
+    ax.set_xlim(0, s[-1])
+    ax.grid(True, alpha=0.3)
     plt.tight_layout(); plt.show()
 
 
-def plot_profiles(scene, named, title, ylim=None, mark_lead=True):
-    """여러 속도 프로파일을 s vs km/h 로 겹쳐 그린다.
+def _draw_profiles(ax, scene, named, ylim=None):
+    """주어진 axis 에 여러 속도 프로파일(s vs km/h)을 그린다.
 
     named : list of dict { 'v': (N,) m/s, 'label', 'color', 'ls'(opt), 'lw'(opt), 'alpha'(opt) }
     """
     s = scene['s']
-    fig, ax = plt.subplots(figsize=(12, 4.5))
-    _mark_events(ax, scene, mark_lead=mark_lead)
+    _mark_events(ax, scene)
     for item in named:
         v_kph = np.array(item['v']) * MS2KPH
         v_kph = np.where(np.isfinite(v_kph), v_kph, np.nan)
         ax.plot(s, v_kph, label=item['label'], color=item['color'],
                 ls=item.get('ls', '-'), lw=item.get('lw', 2.0), alpha=item.get('alpha', 1.0))
     ax.axhline(scene['v_limit_kph'], color='gray', lw=0.8, ls=':')
-    ax.set_xlabel('arc length s [m]'); ax.set_ylabel('speed [km/h]')
+    ax.set_xlabel(S_XLABEL); ax.set_ylabel('speed [km/h]')
     ax.set_ylim(ylim if ylim else (-3, scene['v_limit_kph'] * 1.15))
-    ax.set_title(title)
+    ax.set_xlim(0, s[-1])
     ax.grid(True, alpha=0.3)
     ax.legend(loc='upper right', fontsize=8, ncol=2)
+
+
+def plot_profiles(scene, named, title, ylim=None, figsize=(11, 4.0)):
+    """여러 속도 프로파일을 경로 거리 s 기준으로 겹쳐 그린다(km/h)."""
+    fig, ax = plt.subplots(figsize=figsize)
+    _draw_profiles(ax, scene, named, ylim)
+    ax.set_title(title)
     plt.tight_layout(); plt.show()
 
 
@@ -248,9 +251,9 @@ def plot_smoothing(scene, before, after, before_label, after_label, title):
 
 
 def plot_validation(scene, v_final, accel, a_min, a_max):
-    """최종 속도 프로파일 + 가속도 프로파일(한계선 포함)."""
+    """최종 속도 프로파일 + 가속도 프로파일(한계선 포함). 둘 다 경로 거리 s 기준."""
     s = scene['s']
-    fig, (ax_v, ax_a) = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
+    fig, (ax_v, ax_a) = plt.subplots(2, 1, figsize=(11, 5.6), sharex=True)
 
     _mark_events(ax_v, scene)
     ax_v.plot(s, np.array(v_final) * MS2KPH, color='tab:blue', lw=2.6, label='final speed')
@@ -265,15 +268,16 @@ def plot_validation(scene, v_final, accel, a_min, a_max):
     ax_a.axhline(a_min, color='red', ls='--', lw=1.4, label=f'a_min = {a_min}')
     ax_a.axhline(0, color='gray', lw=0.8)
     ax_a.fill_between(s, a_min, a_max, color='green', alpha=0.07)
-    ax_a.set_xlabel('arc length s [m]'); ax_a.set_ylabel(r'accel $a$ [m/s$^2$]')
+    ax_a.set_xlabel(S_XLABEL); ax_a.set_ylabel(r'accel $a$ [m/s$^2$]')
     ax_a.set_title('Acceleration stays within [a_min, a_max]')
     ax_a.grid(True, alpha=0.3); ax_a.legend(loc='upper right', fontsize=8)
+    ax_a.set_xlim(0, s[-1])
     plt.tight_layout(); plt.show()
 
 
 def plot_time_parameterization(t, s_t, v_t):
     """시간 적분 결과 v(t), s(t)."""
-    fig, (ax_v, ax_s) = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
+    fig, (ax_v, ax_s) = plt.subplots(2, 1, figsize=(10, 5.0), sharex=True)
     ax_v.plot(t, np.array(v_t) * MS2KPH, color='tab:blue', lw=2.4)
     ax_v.fill_between(t, np.array(v_t) * MS2KPH, alpha=0.12, color='tab:blue')
     ax_v.set_ylabel('speed [km/h]'); ax_v.set_title('Speed vs time  v(t)')
@@ -298,8 +302,8 @@ def animate_drive(scene, t_frames, s_frames, v_frames_kph, interval=60):
 
     s, x, y, yaw = scene['s'], scene['x'], scene['y'], scene['yaw']
 
-    fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(12, 9),
-                                         gridspec_kw={'height_ratios': [2.1, 1]})
+    fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(12, 7.2),
+                                         gridspec_kw={'height_ratios': [1.7, 1]})
 
     # 위: 정적 장면(아이콘+표지판 등)을 한 번만 그림. 자차는 따로 움직임.
     draw_scene(ax_top, scene, v_kph=None, show_cbar=False)
@@ -318,7 +322,7 @@ def animate_drive(scene, t_frames, s_frames, v_frames_kph, interval=60):
     ax_bot.plot(s, full_v_kph, color='tab:blue', lw=2.2)
     ax_bot.fill_between(s, full_v_kph, alpha=0.12, color='tab:blue')
     ax_bot.axhline(scene['v_limit_kph'], color='gray', lw=0.8, ls=':')
-    ax_bot.set_xlabel('arc length s [m]'); ax_bot.set_ylabel('speed [km/h]')
+    ax_bot.set_xlabel(S_XLABEL); ax_bot.set_ylabel('speed [km/h]')
     ax_bot.set_ylim(-3, scene['v_limit_kph'] * 1.15)
     ax_bot.grid(True, alpha=0.3)
     cursor = ax_bot.axvline(s_frames[0], color='red', lw=2)
