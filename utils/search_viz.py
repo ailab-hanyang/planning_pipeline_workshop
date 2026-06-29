@@ -58,8 +58,17 @@ def _setup_axes(ax, ox, oy, sx, sy, gx, gy, title):
     ax.set_title(title)
 
 
+def _draw_resolution_grid(ax, grid, color='lightgray', lw=0.5):
+    """Draw resolution gridlines. grid = (min_x, max_x, min_y, max_y, resolution)."""
+    min_x, max_x, min_y, max_y, res = grid
+    for xline in np.arange(min_x, max_x + res, res):
+        ax.axvline(xline, color=color, lw=lw, zorder=0)
+    for yline in np.arange(min_y, max_y + res, res):
+        ax.axhline(yline, color=color, lw=lw, zorder=0)
+
+
 def animate_search(explore_order, path_x, path_y, ox, oy, sx, sy, gx, gy,
-                   title='Search', n_batches=60, show_count=True):
+                   title='Search', n_batches=60, show_count=True, grid=None):
     """
     탐색 과정 애니메이션.
     explore_order : [(x, y, cost), ...] 탐색 확정 순서
@@ -78,6 +87,8 @@ def animate_search(explore_order, path_x, path_y, ox, oy, sx, sy, gx, gy,
 
     fig, ax = plt.subplots(figsize=(8, 8))
     _setup_axes(ax, ox, oy, sx, sy, gx, gy, f'{title}: exploring...')
+    if grid is not None:
+        _draw_resolution_grid(ax, grid)
     scat = ax.scatter([], [], c=[], cmap='plasma', vmin=0, vmax=max_cost, s=20, alpha=0.7, zorder=2)
     path_line, = ax.plot([], [], '-r', lw=2.5, zorder=4)
     title_obj = ax.title

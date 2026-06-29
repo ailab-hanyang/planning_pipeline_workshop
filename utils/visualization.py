@@ -25,11 +25,25 @@ def plot_grid_map(ox, oy, sx, sy, gx, gy, ax=None):
     return ax
 
 
+def _draw_resolution_grid(ax, grid, color='lightgray', lw=0.5):
+    """Draw resolution gridlines. grid = (min_x, max_x, min_y, max_y, resolution)."""
+    min_x, max_x, min_y, max_y, res = grid
+    for xline in np.arange(min_x, max_x + res, res):
+        ax.axvline(xline, color=color, lw=lw, zorder=0)
+    for yline in np.arange(min_y, max_y + res, res):
+        ax.axhline(yline, color=color, lw=lw, zorder=0)
+
+
 def plot_search_result(closed_x, closed_y, path_x, path_y,
-                       ox, oy, sx, sy, gx, gy, title='Search Result'):
-    """Show explored nodes (left) and final path (right) side by side."""
+                       ox, oy, sx, sy, gx, gy, title='Search Result', grid=None):
+    """Show explored nodes (left) and final path (right) side by side.
+
+    grid : optional (min_x, max_x, min_y, max_y, resolution) -> draw resolution gridlines.
+    """
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     for ax in axes:
+        if grid is not None:
+            _draw_resolution_grid(ax, grid)
         ax.plot(ox, oy, '.k', ms=2)
         ax.plot(sx, sy, 'og', ms=10)
         ax.plot(gx, gy, 'xb', ms=10, mew=2)
