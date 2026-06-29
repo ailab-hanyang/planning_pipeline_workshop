@@ -59,11 +59,12 @@ def _setup_axes(ax, ox, oy, sx, sy, gx, gy, title):
 
 
 def animate_search(explore_order, path_x, path_y, ox, oy, sx, sy, gx, gy,
-                   title='Search', n_batches=60):
+                   title='Search', n_batches=60, show_count=True):
     """
     탐색 과정 애니메이션.
     explore_order : [(x, y, cost), ...] 탐색 확정 순서
     path_x/path_y : 최종 경로
+    show_count    : 타이틀에 탐색 노드 개수를 표시할지 (False면 개수 숨김)
     Phase 1: 노드가 비용(plasma) 순으로 퍼짐 / Phase 2: 경로 역추적 / Phase 3: 완료
     """
     n = len(explore_order)
@@ -88,15 +89,18 @@ def animate_search(explore_order, path_x, path_y, ox, oy, sx, sy, gx, gy,
             for k in range(s, e):
                 bx.append(explore_order[k][0]); by.append(explore_order[k][1]); bc.append(explore_order[k][2])
             scat.set_offsets(np.c_[bx, by]); scat.set_array(np.array(bc))
-            title_obj.set_text(f'{title}: exploring  {min(e, n):,}/{n:,} nodes')
+            title_obj.set_text(f'{title}: exploring  {min(e, n):,}/{n:,} nodes'
+                               if show_count else f'{title}: exploring...')
             path_line.set_data([], [])
         elif frame < n_explore + n_path:
             k = frame - n_explore + 1
             path_line.set_data(path_x[:k], path_y[:k])
-            title_obj.set_text(f'{title}: tracing path  {k}/{n_path}')
+            title_obj.set_text(f'{title}: tracing path  {k}/{n_path}'
+                               if show_count else f'{title}: tracing path...')
         else:
             path_line.set_data(path_x, path_y)
-            title_obj.set_text(f'{title}: done!  {n:,} nodes  |  path {path_len:.1f} m')
+            title_obj.set_text(f'{title}: done!  {n:,} nodes  |  path {path_len:.1f} m'
+                               if show_count else f'{title}: done!  |  path {path_len:.1f} m')
         return scat, path_line, title_obj
 
     ani = FuncAnimation(fig, update, frames=total, interval=80, repeat=False, blit=False)
