@@ -26,8 +26,8 @@ def build_obstacle_map(ox, oy, resolution, robot_radius):
     max_x = round(max(ox))
     max_y = round(max(oy))
 
-    x_width = round((max_x - min_x) / resolution)
-    y_width = round((max_y - min_y) / resolution)
+    x_width = int((max_x - min_x) / resolution) + 1   # +1: 경계(max) 칸까지 포함 (벽도 격자에 잡히도록)
+    y_width = int((max_y - min_y) / resolution) + 1
 
     obstacle_map = [[False] * y_width for _ in range(x_width)]
 
