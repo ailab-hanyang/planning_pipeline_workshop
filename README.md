@@ -11,7 +11,7 @@ Global Path Planning부터 CARLA 시뮬레이션까지, 자율주행 Planning Pi
 | Day | 폴더 | 내용 | 시간 |
 |-----|------|------|------|
 | Day 1 | `01_global_planning/` | Dijkstra, A*, Hybrid A* | 3h |
-| Day 2 | `02_trajectory_planning/` | Spline, Frenet, Velocity, Local Planner, Frenet Optimal, RRT | 4h |
+| Day 2 | `02_trajectory_planning/` | Cubic Spline, Longitudinal Motion Planning, Optimization Planning | 4h |
 | Day 3 | `03_carla_simulation/` | CARLA 구조·세팅, 기본 실습, Traffic Manager, 판단 시나리오(TTC), AI Planning 개요 | - |
 
 ---
