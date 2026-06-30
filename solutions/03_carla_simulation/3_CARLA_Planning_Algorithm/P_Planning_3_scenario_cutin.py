@@ -266,6 +266,8 @@ def main():
                 if ego_autopilot:
                     ego_vehicle.set_autopilot(False, tm_port)
                     ego_autopilot = False
+                #-[TODO]- Choose the brake strength according to the TTC threshold.
+                #[key functions] ttc < TTC_EMERGENCY -> 1.0, otherwise 0.6
                 brake_val = 1.0 if ttc < TTC_EMERGENCY else 0.6
                 ego_vehicle.apply_control(carla.VehicleControl(throttle=0.0, brake=brake_val))
                 if not ego_braked:

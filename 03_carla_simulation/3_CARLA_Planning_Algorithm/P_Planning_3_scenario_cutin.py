@@ -54,7 +54,9 @@ def compute_ttc(gap_m, rel_speed_mps):
     #-[TODO]- Implement TTC = gap / rel_speed (return inf if rel_speed <= 0, i.e. moving apart)
     #         Same concept as the TTC computed in practice 2.
     #[key functions] simple division, boundary check
-    return ???
+    if rel_speed_mps <=
+        return float('inf')
+    return gap_m /
 
 def set_tm_speed(traffic_manager, vehicle, target_kmh):
     limit = max(1.0, float(vehicle.get_speed_limit()))
@@ -167,13 +169,13 @@ def main():
 
         #-[TODO]- Get the forward waypoints ADV_FORWARD_M ahead of the ego
         #[key functions] wp.next(distance) -> list[Waypoint]
-        ahead_wps = ???
+        ahead_wps = ego_wp.next(
         if not ahead_wps:
             raise RuntimeError('전방 waypoint 없음')
 
         #-[TODO]- Get the adjacent-lane waypoint with get_right_lane() or get_left_lane()
         #[key functions] wp.get_right_lane(), wp.get_left_lane()
-        adj_wp = ???
+        adj_wp = ahead_wps[0].get_right_lane() or ahead_wps[0].
         if adj_wp is None:
             raise RuntimeError('인접 차선 없음')
 
@@ -260,7 +262,21 @@ def main():
             #-[TODO]- If TTC is dangerous, turn off autopilot and brake directly; otherwise resume autopilot
             #         ttc < TTC_EMERGENCY -> full brake(1.0), ttc < TTC_BRAKE -> brake(0.6)
             #[key functions] ego_vehicle.set_autopilot(bool, tm_port), ego_vehicle.apply_control(VehicleControl)
-            ???
+            if relevant and ttc < TTC_BRAKE:
+                if ego_autopilot:
+                    ego_vehicle.set_autopilot(False, tm_port)
+                    ego_autopilot = False
+                #-[TODO]- Choose the brake strength according to the TTC threshold.
+                #[key functions] ttc < TTC_EMERGENCY -> 1.0, otherwise 0.6
+                brake_val = 1.0 if ttc <
+                ego_vehicle.apply_control(carla.VehicleControl(throttle=0.0, brake=brake_val))
+                if not ego_braked:
+                    ego_braked = True
+                    print(f'[REACT] TTC={ttc:.2f}s → Ego 제동 (brake={brake_val})')
+            else:
+                if not ego_autopilot:
+                    ego_vehicle.set_autopilot(True, tm_port)
+                    ego_autopilot = True
 
             log_rows.append({'frame': frame, 'time_s': round(time_s, 3),
                              'dist_m': round(dist, 2),
@@ -276,7 +292,7 @@ def main():
 
                 #-[TODO]- Force the adversary to cut in with traffic_manager.force_lane_change()
                 #[key functions] traffic_manager.force_lane_change(vehicle, to_right: bool)
-                traffic_manager.force_lane_change(???, ???)
+                traffic_manager.force_lane_change(
                 direction = 'RIGHT' if force_dir_right else 'LEFT'
                 print(f'[TRIGGER] dist={dist:.1f}m  force_lane_change={direction}')
 

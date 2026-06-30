@@ -60,15 +60,7 @@ def heuristic(key_a, key_b):
 
 def astar(graph, start, goal):
     #-[TODO]- Find the shortest path from start to goal with A*, return the node-key list in path order
-    #  [algorithm]
-    #   1) push (f=0.0, start) into the priority queue open_set
-    #   2) start with g_score = {start: 0.0}, came_from = {}
-    #   3) pop the node (current) with the smallest f from open_set
-    #   4) if current is goal, rebuild the path by following came_from backward and return it
-    #   5) else for each neighbor: tentative_g = g_score[current] + edge_cost
-    #        if smaller than before, update came_from/g_score and push with f = g + heuristic(neighbor, goal)
-    #   6) return [] (no path) when the queue empties
-    #[key functions] heapq.heappush(heap, (f, node)), heapq.heappop(heap), graph.get(node, [])
+    #[key functions] heapq.heappush(open_set, (f, node)), heapq.heappop(open_set), graph.get(current, [])
     open_set  = [(0.0, start)]
     came_from = {}
     g_score   = {start: 0.0}
@@ -87,6 +79,8 @@ def astar(graph, start, goal):
             if tentative_g < g_score.get(neighbor, float('inf')):
                 came_from[neighbor] = current
                 g_score[neighbor]   = tentative_g
+                #-[TODO]- Push the neighbor into open_set with f = g + h
+                #[key functions] heuristic(neighbor, goal), heapq.heappush(open_set, (f, neighbor))
                 f = tentative_g + heuristic(neighbor, goal)
                 heapq.heappush(open_set, (f, neighbor))
     return []   # 경로 없음

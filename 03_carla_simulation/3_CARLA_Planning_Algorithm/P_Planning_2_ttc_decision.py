@@ -44,7 +44,9 @@ def compute_ttc(gap_m, rel_speed_mps):
     #-[TODO]- Implement TTC = gap / rel_speed (return inf if rel_speed <= 0)
     #         rel_speed = ego speed - lead speed (positive means closing in)
     #[key functions] simple division, boundary check
-    return ???
+    if rel_speed_mps <=
+        return float('inf')
+    return gap_m /
 
 # ============================================================
 # TTC 기반 판단
@@ -52,7 +54,13 @@ def compute_ttc(gap_m, rel_speed_mps):
 def decide(ttc, gap_m):
     #-[TODO]- Decide the action from TTC: EMERGENCY_BRAKE / BRAKE / CAUTION / KEEP
     #[key functions] compare ttc with TTC_EMERGENCY / TTC_BRAKE / TTC_CAUTION
-    return ???
+    if ttc <
+        return 'EMERGENCY_BRAKE'
+    if ttc <
+        return 'BRAKE'
+    if ttc <
+        return 'CAUTION'
+    return 'KEEP'
 
 # ============================================================
 # Util
@@ -130,7 +138,7 @@ def main():
 
         #-[TODO]- Get the lead vehicle's spawn waypoint LEAD_FORWARD_M ahead of the ego
         #[key functions] wp.next(distance) -> list[Waypoint]
-        lead_wps = ???
+        lead_wps = ego_wp.next(
         if not lead_wps:
             raise RuntimeError('선행차 spawn 위치 없음')
         lead_tf = lead_wps[0].transform
@@ -212,7 +220,7 @@ def main():
                 brake_val = 1.0 if action == 'EMERGENCY_BRAKE' else 0.5
                 #-[TODO]- Apply the brake command with ego_vehicle.apply_control()
                 #[key functions] carla.VehicleControl(throttle=0.0, brake=brake_val)
-                ego_vehicle.apply_control(???)
+                ego_vehicle.apply_control(
             else:
                 if brake_hold:
                     if gap > SAFE_GAP_M and ttc > TTC_RESUME:

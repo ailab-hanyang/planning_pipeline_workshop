@@ -54,7 +54,7 @@ def compute_ttc(gap_m, rel_speed_mps):
 def decide(ttc, gap_m):
     #-[TODO]- Decide the action from TTC: EMERGENCY_BRAKE / BRAKE / CAUTION / KEEP
     #[key functions] compare ttc with TTC_EMERGENCY / TTC_BRAKE / TTC_CAUTION
-    if ttc < TTC_EMERGENCY or gap_m < 5.0:
+    if ttc < TTC_EMERGENCY:
         return 'EMERGENCY_BRAKE'
     if ttc < TTC_BRAKE:
         return 'BRAKE'

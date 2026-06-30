@@ -54,20 +54,36 @@ def key_to_xy(key):
 def heuristic(key_a, key_b):
     #-[TODO]- Return the straight-line distance between two grid nodes
     #[key functions] key_to_xy(key) -> (x, y),  math.hypot(dx, dy)
-    return ???
+    ax, ay = key_to_xy(key_a)
+    bx, by = key_to_xy(key_b)
+    return math.hypot(ax - bx, ay -
 
 def astar(graph, start, goal):
     #-[TODO]- Find the shortest path from start to goal with A*, return the node-key list in path order
-    #  [algorithm]
-    #   1) push (f=0.0, start) into the priority queue open_set
-    #   2) start with g_score = {start: 0.0}, came_from = {}
-    #   3) pop the node (current) with the smallest f from open_set
-    #   4) if current is goal, rebuild the path by following came_from backward and return it
-    #   5) else for each neighbor: tentative_g = g_score[current] + edge_cost
-    #        if smaller than before, update came_from/g_score and push with f = g + heuristic(neighbor, goal)
-    #   6) return [] (no path) when the queue empties
-    #[key functions] heapq.heappush(heap, (f, node)), heapq.heappop(heap), graph.get(node, [])
-    ???
+    #[key functions] heapq.heappush(open_set, (f, node)), heapq.heappop(open_set), graph.get(current, [])
+    open_set  = [(0.0, start)]
+    came_from = {}
+    g_score   = {start: 0.0}
+
+    while open_set:
+        _, current = heapq.heappop(open_set)
+        if current == goal:
+            path = [current]
+            while current in came_from:
+                current = came_from[current]
+                path.append(current)
+            return list(reversed(path))
+
+        for neighbor, edge_cost in graph.get(current, []):
+            tentative_g = g_score[current] + edge_cost
+            if tentative_g < g_score.get(neighbor, float('inf')):
+                came_from[neighbor] = current
+                g_score[neighbor]   = tentative_g
+                #-[TODO]- Push the neighbor into open_set with f = g + h
+                #[key functions] heuristic(neighbor, goal), heapq.heappush(open_set, (f, neighbor))
+                f = tentative_g + heuristic(neighbor,
+                heapq.heappush(open_set,
+    return []   # 경로 없음
 
 # ============================================================
 # 도로망 그래프 빌드 (위상정보 기반 — 교차로 연결 보장)
@@ -100,7 +116,7 @@ def build_road_graph(world, resolution):
                 break
             #-[TODO]- Get the next waypoint candidates resolution(m) ahead of wp
             #[key functions] wp.next(distance) -> list[Waypoint]
-            nxts = ???
+            nxts = wp.next(
             if not nxts:
                 break
             wp = nxts[0]
@@ -151,7 +167,7 @@ def pure_pursuit_control(ego_vehicle, target_loc, target_speed):
     #-[TODO]- Steer toward the target: positive(right) if the target is on the right, negative(left) if on the left
     #         steer = (right component) / max(|forward component|, 1.0), clamped to [-1, 1]
     #[key functions] clamp(v, lo, hi)
-    steer = ???
+    steer = clamp(local_side /
 
     speed    = get_speed_mps(ego_vehicle)
     throttle = 0.6 if speed < target_speed else 0.0
