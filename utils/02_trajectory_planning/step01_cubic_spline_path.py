@@ -74,6 +74,8 @@ def plot_segment_definition(x, y):
                 color=SEGMENT_COLORS[i % len(SEGMENT_COLORS)], lw=3,
                 solid_capstyle='round', zorder=2)
     ax.plot(x, y, 'o', mfc='white', mec='black', mew=1.5, ms=9, zorder=3)
+    # 오른쪽 연속 조건이 걸리는 접점 x1 을 빨간 원으로 강조
+    ax.plot(x[1], y[1], 'o', mfc='none', mec='red', mew=2.2, ms=17, zorder=4)
 
     ax.axvline(x[1], color='gray', ls=':', lw=1.0, alpha=0.7)
     ax.annotate(r'$x_1$', xy=(x[1], -0.6), ha='center', color='gray', fontsize=12)
@@ -113,19 +115,24 @@ def plot_slope_comparison(x, y, evaluate_cubic_slope):
     """
     sp = CubicSpline1D(x, y)
 
-    dense_x, straight_slope, spline_slope = [], [], []
+    dense_x, spline_slope = [], []
     for i in range(len(x) - 1):
-        line_slope = (y[i + 1] - y[i]) / (x[i + 1] - x[i])
         for t in np.linspace(x[i], x[i + 1], 50, endpoint=False):
             dense_x.append(t)
-            straight_slope.append(line_slope)
             spline_slope.append(evaluate_cubic_slope(sp.a[i], sp.b[i], sp.c[i], sp.d[i], t - x[i]))
 
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.plot(dense_x, straight_slope, color='gray', lw=2, label='Straight lines: slope jumps')
-    ax.plot(dense_x, spline_slope, color='tab:blue', lw=2.5, label='Spline: slope is continuous')
     for knot_x in x[1:-1]:
-        ax.axvline(knot_x, color='red', ls='--', lw=0.8, alpha=0.5)
+        ax.axvline(knot_x, color='red', ls='--', lw=0.8, alpha=0.5, zorder=1)
+    # 직선의 기울기: 구간별 수평 선분으로 끊어 그림 (양 끝 열린 원 = 접점에서 값이 점프해 불연속)
+    for i in range(len(x) - 1):
+        line_slope = (y[i + 1] - y[i]) / (x[i + 1] - x[i])
+        ax.plot([x[i], x[i + 1]], [line_slope, line_slope], color='gray', lw=2, zorder=2,
+                label='Straight lines: slope jumps' if i == 0 else None)
+        ax.plot([x[i], x[i + 1]], [line_slope, line_slope], 'o', mfc='white', mec='gray',
+                ms=6, zorder=3)
+    ax.plot(dense_x, spline_slope, color='tab:blue', lw=2.5, zorder=4,
+            label='Spline: slope is continuous')
     ax.grid(True, alpha=0.3); ax.legend(loc='upper right')
     ax.set_title('Slope (dy/dx) along the path  (red lines = joints)')
     ax.set_xlabel('x'); ax.set_ylabel('slope dy/dx')
@@ -140,6 +147,8 @@ def plot_cubic_spline(x, y, evaluate_cubic_segment):
     sp = CubicSpline1D(x, y)
 
     fig, ax = plt.subplots(figsize=(9, 5))
+    # 비교용 직선 연결을 밑에 깔아 '직선과 달리 매끄럽다'가 한 그림에서 보이게
+    ax.plot(x, y, '-', color='lightgray', lw=1.5, zorder=1, label='Straight lines')
     for i in range(len(x) - 1):
         seg = np.linspace(x[i], x[i + 1], 50)
         positions = [evaluate_cubic_segment(sp.a[i], sp.b[i], sp.c[i], sp.d[i], t - x[i]) for t in seg]

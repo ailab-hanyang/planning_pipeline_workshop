@@ -142,8 +142,10 @@ def draw_scene(ax, scene, v_kph=None, show_cbar=True, show_icons=True):
             lw=12, alpha=0.30, solid_capstyle='round', zorder=1.2)
     mzx, mzy, mzyaw = _pose_at_s(scene, 0.5 * (scene['limit30_start'] + scene['limit30_end']))
     nzx, nzy = _perp(mzyaw)
-    ax.annotate('30 zone', xy=(mzx - nzx * 7, mzy - nzy * 7), ha='center', va='center',
-                fontsize=9, fontweight='bold', color='royalblue', zorder=8)
+    # 이후 프로파일 그래프의 가로축이 s 라서, 장면에도 s 값을 병기해 좌표를 잇는다
+    ax.annotate(f"30 zone\ns={scene['limit30_start']:.0f}~{scene['limit30_end']:.0f}",
+                xy=(mzx - nzx * 8, mzy - nzy * 8), ha='center', va='center',
+                fontsize=8, fontweight='bold', color='royalblue', zorder=8)
 
     if v_kph is not None:
         scatter = ax.scatter(x, y, c=v_kph, cmap=SPEED_CMAP, vmin=0,
@@ -159,12 +161,19 @@ def draw_scene(ax, scene, v_kph=None, show_cbar=True, show_icons=True):
         # 제한속도 표지판 30 (30 km/h 구간 시작부)
         zx, zy, zyaw = _pose_at_s(scene, scene['limit30_start'])
         _add_speed_sign(ax, zx, zy, zyaw, str(int(scene['limit30_kph'])))
-        # 방지턱
+        # 방지턱 (+ s 좌표 병기)
         bx, by, byaw = _pose_at_s(scene, 0.5 * (scene['bump_start'] + scene['bump_end']))
         _add_bump(ax, bx, by, byaw)
-        # 정지선
+        nbx, nby = _perp(byaw)
+        ax.annotate(f"s={scene['bump_start']:.0f}~{scene['bump_end']:.0f}",
+                    xy=(bx - nbx * 6, by - nby * 6), ha='center', va='center',
+                    fontsize=8, color='saddlebrown', zorder=8)
+        # 정지선 (+ s 좌표 병기)
         tx, ty, tyaw = _pose_at_s(scene, scene['s_stop'])
         _add_stop(ax, tx, ty, tyaw)
+        ntx, nty = _perp(tyaw)
+        ax.annotate(f"s={scene['s_stop']:.0f}", xy=(tx - ntx * 6, ty - nty * 6),
+                    ha='center', va='center', fontsize=8, color='red', zorder=8)
         # 자차(ego) — 시작 위치
         ex, ey, eyaw = _pose_at_s(scene, 0.0)
         _add_car(ax, ex, ey, eyaw, '#3b6fb0', label='ego')
@@ -192,7 +201,20 @@ def show_scene(scene, v_kph=None, title=None, figsize=(12, 4.2)):
 # 섹션별 그래프 (각 plot 은 경로 거리 s [m] 를 가로축으로 하는 단독 그래프)
 # ---------------------------------------------------------------------------
 def _mark_events(ax, scene):
-    """s 축 그래프에 30 km/h 구간 / 방지턱 / 정지선 위치 표시."""
+    """s 축 그래프에 급커브 / 30 km/h 구간 / 방지턱 / 정지선 위치 표시."""
+    # 급커브 구간: 곡률이 커서 v_kappa 가 제한속도 아래로 떨어지는 곳 (yaw 변화율로 추정).
+    # 속도 프로파일의 골이 '어느 커브 때문'인지 배경만 봐도 알 수 있게 한다.
+    s = np.asarray(scene['s'])
+    kappa_scene = np.abs(np.gradient(np.unwrap(np.asarray(scene['yaw'])), s))
+    v_limit_ms = scene['v_limit_kph'] / MS2KPH
+    in_curve = kappa_scene > scene.get('a_lat_max', 2.0) / v_limit_ms ** 2
+    edges = np.flatnonzero(np.diff(in_curve.astype(int)))
+    bounds = np.r_[0, edges + 1, len(s)]
+    curve_label = 'sharp curve'
+    for lo, hi in zip(bounds[:-1], bounds[1:]):
+        if in_curve[lo]:
+            ax.axvspan(s[lo], s[hi - 1], color='tab:purple', alpha=0.10, label=curve_label)
+            curve_label = None
     ax.axvspan(scene['limit30_start'], scene['limit30_end'], color='tab:blue', alpha=0.10,
                label='30 km/h zone')
     ax.axvspan(scene['bump_start'], scene['bump_end'], color='orange', alpha=0.20,
@@ -231,7 +253,8 @@ def _draw_profiles(ax, scene, named, ylim=None):
     ax.set_ylim(ylim if ylim else (-3, scene['v_limit_kph'] * 1.15))
     ax.set_xlim(0, s[-1])
     ax.grid(True, alpha=0.3)
-    ax.legend(loc='upper right', fontsize=8, ncol=2)
+    # 범례는 왼쪽 아래(항상 빈 공간)에 -- 오른쪽 위는 방지턱/정지선 구간을 가림
+    ax.legend(loc='lower left', fontsize=8, ncol=2)
 
 
 def plot_profiles(scene, named, title, ylim=None, figsize=(11, 4.0)):
@@ -256,12 +279,12 @@ def plot_validation(scene, v_final, accel, a_min, a_max):
     fig, (ax_v, ax_a) = plt.subplots(2, 1, figsize=(11, 5.6), sharex=True)
 
     _mark_events(ax_v, scene)
+    # 곡선 아래 fill 은 30 zone 배경 밴드와 색이 겹쳐 밴드를 가리므로 넣지 않는다
     ax_v.plot(s, np.array(v_final) * MS2KPH, color='tab:blue', lw=2.6, label='final speed')
-    ax_v.fill_between(s, np.array(v_final) * MS2KPH, alpha=0.12, color='tab:blue')
     ax_v.axhline(scene['v_limit_kph'], color='gray', lw=0.8, ls=':')
     ax_v.set_ylabel('speed [km/h]'); ax_v.set_ylim(-3, scene['v_limit_kph'] * 1.15)
     ax_v.set_title('Final speed profile')
-    ax_v.grid(True, alpha=0.3); ax_v.legend(loc='upper right', fontsize=8, ncol=2)
+    ax_v.grid(True, alpha=0.3); ax_v.legend(loc='lower left', fontsize=8, ncol=2)
 
     ax_a.plot(s, accel, color='tab:green', lw=2)
     ax_a.axhline(a_max, color='red', ls='--', lw=1.4, label=f'a_max = {a_max}')
@@ -270,7 +293,7 @@ def plot_validation(scene, v_final, accel, a_min, a_max):
     ax_a.fill_between(s, a_min, a_max, color='green', alpha=0.07)
     ax_a.set_xlabel(S_XLABEL); ax_a.set_ylabel(r'accel $a$ [m/s$^2$]')
     ax_a.set_title('Acceleration stays within [a_min, a_max]')
-    ax_a.grid(True, alpha=0.3); ax_a.legend(loc='upper right', fontsize=8)
+    ax_a.grid(True, alpha=0.3); ax_a.legend(loc='upper left', fontsize=8)
     ax_a.set_xlim(0, s[-1])
     plt.tight_layout(); plt.show()
 
