@@ -1,0 +1,482 @@
+#!/usr/bin/env python3
+#======================================================================#
+# Module:      P_SensorPractice_9_laneinvasion.py
+# Description: Sensor practice - Lane invasion terminal output
+#
+# Authors: Hanyang University, Automotive Intelligence Laboratory (AILAB)
+#
+# Revision History
+#      Feb  21, 2026: Seokhwan Jeong - Created.
+#      Jul  03, 2026: Jisang Yun - TODO 주석/변수명 규칙 통일 (노트북 스타일)
+#======================================================================#
+import time
+import random
+
+try:
+    import pygame
+    from pygame.locals import K_ESCAPE
+except ImportError:
+    raise RuntimeError("cannot import pygame, make sure pygame is installed")
+
+import carla
+
+
+# ============================================================
+# 기본 설정값들
+# ============================================================
+WINDOW_RES = "300x100"
+WINDOW_W, WINDOW_H = [int(x) for x in WINDOW_RES.split("x")]
+
+NUM_NPC = 20
+
+SPECTATOR_MODES = ["CHASE", "TOP", "FIRST_PERSON"]
+SPEC_CFG = {
+    "chase_back": 8.0,
+    "chase_up": 3.0,
+    "chase_pitch": -10.0,
+
+    "top_z": 60.0,
+    "top_pitch": -89.0,
+    "top_yaw": 0.0,
+
+    "fp_front": 1.8,
+    "fp_up": 1.35,
+    "fp_pitch": -2.0,
+
+    "map_view_z": 220.0,
+    "map_view_pitch": -89.0,
+    "map_view_yaw": -90.0,
+}
+
+MANUAL_CFG = {
+    "throttle": 0.70,
+    "brake": 1.00,
+    "steer_step": 0.03,
+    "steer_return": 0.80
+}
+
+LANE_SENSOR_TICK = 0.0
+TERM_PRINT_INTERVAL_SEC = 0.5
+
+
+# ============================================================
+# Util
+# ============================================================
+def is_alive(actor):
+    try:
+        return actor is not None and actor.is_alive
+    except Exception:
+        return False
+
+def compute_map_center_from_spawnpoints(spawn_points):
+    if not spawn_points:
+        return carla.Location(x=0.0, y=0.0, z=0.0)
+    sx = sum(sp.location.x for sp in spawn_points)
+    sy = sum(sp.location.y for sp in spawn_points)
+    sz = sum(sp.location.z for sp in spawn_points)
+    n = float(len(spawn_points))
+    return carla.Location(x=sx/n, y=sy/n, z=sz/n)
+
+def spectator_follow_tf(ego_tf, mode, spec_cfg):
+    if mode == "CHASE":
+        back = float(spec_cfg["chase_back"])
+        up = float(spec_cfg["chase_up"])
+        pitch = float(spec_cfg["chase_pitch"])
+        cam_loc = ego_tf.transform(carla.Location(x=-back, y=0.0, z=up))
+        cam_rot = carla.Rotation(roll=0.0, pitch=pitch, yaw=ego_tf.rotation.yaw)
+        return carla.Transform(cam_loc, cam_rot)
+
+    if mode == "TOP":
+        top_z = float(spec_cfg["top_z"])
+        top_pitch = float(spec_cfg["top_pitch"])
+        top_yaw = float(spec_cfg["top_yaw"])
+        loc = carla.Location(
+            x=ego_tf.location.x,
+            y=ego_tf.location.y,
+            z=ego_tf.location.z + top_z
+        )
+        rot = carla.Rotation(roll=0.0, pitch=top_pitch, yaw=top_yaw)
+        return carla.Transform(loc, rot)
+
+    fp_front = float(spec_cfg["fp_front"])
+    fp_up = float(spec_cfg["fp_up"])
+    fp_pitch = float(spec_cfg["fp_pitch"])
+    cam_loc = ego_tf.transform(carla.Location(x=fp_front, y=0.0, z=fp_up))
+    cam_rot = carla.Rotation(roll=0.0, pitch=fp_pitch, yaw=ego_tf.rotation.yaw)
+    return carla.Transform(cam_loc, cam_rot)
+
+def map_view_tf_from_cfg(map_center, spec_cfg):
+    z = float(spec_cfg["map_view_z"])
+    pitch = float(spec_cfg["map_view_pitch"])
+    yaw = float(spec_cfg["map_view_yaw"])
+    return carla.Transform(
+        carla.Location(x=map_center.x, y=map_center.y, z=map_center.z + z),
+        carla.Rotation(roll=0.0, pitch=pitch, yaw=yaw)
+    )
+
+def build_vehicle_control(keys, steer_cache, reverse_toggle, manual_cfg):
+    steer_step = float(manual_cfg["steer_step"])
+    steer_return = float(manual_cfg["steer_return"])
+    throttle_val = float(manual_cfg["throttle"])
+    brake_val = float(manual_cfg["brake"])
+
+    if keys[pygame.K_a]:
+        steer_cache -= steer_step
+    elif keys[pygame.K_d]:
+        steer_cache += steer_step
+    else:
+        steer_cache *= steer_return
+
+    steer_cache = max(-1.0, min(1.0, steer_cache))
+
+    throttle = 0.0
+    brake = 0.0
+    if keys[pygame.K_w] and not keys[pygame.K_s]:
+        throttle = throttle_val
+    elif keys[pygame.K_s] and not keys[pygame.K_w]:
+        brake = brake_val
+
+    ctrl = carla.VehicleControl(
+        throttle=float(throttle),
+        steer=float(steer_cache),
+        brake=float(brake),
+        hand_brake=bool(keys[pygame.K_SPACE]),
+        reverse=bool(reverse_toggle)
+    )
+    return ctrl, steer_cache
+
+def find_vehicle_bp(world, preferred_id: str):
+    lib = world.get_blueprint_library()
+    try:
+        bp = lib.find(preferred_id)
+        if bp is not None:
+            return bp
+    except Exception:
+        pass
+    bps = lib.filter("vehicle.*")
+    if not bps:
+        raise RuntimeError("No vehicle blueprints found.")
+    return bps[0]
+
+
+# ============================================================
+# Ego 차량 소환하기
+# ============================================================
+def spawn_ego_vehicle(world, tm_port):
+    spawn_points = world.get_map().get_spawn_points()
+    if not spawn_points:
+        raise RuntimeError("No spawn points found.")
+    ego_transform = random.choice(spawn_points)
+
+    # Ego 차량 스폰 (find_vehicle_bp + world.spawn_actor 사용, 주어진 코드)
+    ego_bp = find_vehicle_bp(world, "vehicle.dodge.charger_2020")
+    ego = world.spawn_actor(ego_bp, ego_transform)
+    ego.set_autopilot(True, tm_port)
+
+    return ego, ego_transform, spawn_points
+
+
+def select_spawnpoints_with_min_gap(spawn_points, ego_transform, n, min_dist_from_ego, min_dist_between):
+    def far_from_ego(sp):
+        return sp.location.distance(ego_transform.location) > float(min_dist_from_ego)
+
+    candidates = [sp for sp in spawn_points if far_from_ego(sp)]
+    random.shuffle(candidates)
+
+    selected = []
+    for sp in candidates:
+        if all(sp.location.distance(s.location) > float(min_dist_between) for s in selected):
+            selected.append(sp)
+            if len(selected) >= n:
+                break
+    return selected
+
+
+def spawn_npc_vehicles(client, world, tm_port, ego_transform):
+    if NUM_NPC <= 0:
+        return []
+
+    spawn_points = world.get_map().get_spawn_points()
+    blueprints = world.get_blueprint_library().filter("vehicle.*")
+    blueprints = [
+        bp for bp in blueprints
+        if bp.has_attribute("number_of_wheels") and int(bp.get_attribute("number_of_wheels")) == 4
+    ]
+
+    selected_sps = select_spawnpoints_with_min_gap(
+        spawn_points=spawn_points,
+        ego_transform=ego_transform,
+        n=min(NUM_NPC, len(spawn_points)),
+        min_dist_from_ego=8.0,
+        min_dist_between=15.0
+    )
+
+    n = min(NUM_NPC, len(selected_sps))
+    if n <= 0:
+        return []
+
+    batch = []
+    for i in range(n):
+        npc_bp = random.choice(blueprints)
+
+        if npc_bp.has_attribute("color"):
+            npc_bp.set_attribute("color", random.choice(npc_bp.get_attribute("color").recommended_values))
+        if npc_bp.has_attribute("driver_id"):
+            npc_bp.set_attribute("driver_id", random.choice(npc_bp.get_attribute("driver_id").recommended_values))
+
+        npc_bp.set_attribute("role_name", "autopilot")
+
+        batch.append(
+            carla.command.SpawnActor(npc_bp, selected_sps[i]).then(
+                carla.command.SetAutopilot(carla.command.FutureActor, True, tm_port)
+            )
+        )
+
+    responses = client.apply_batch_sync(batch, True)
+    npc_ids = []
+    for r in responses:
+        if not r.error:
+            npc_ids.append(r.actor_id)
+    return npc_ids
+
+
+def apply_tm_safety_settings(world, traffic_manager, ego_vehicle, npc_ids):
+    #traffic_manager.global_percentage_speed_difference(50.0)
+    all_ids = [ego_vehicle.id] + list(npc_ids)
+    for vid in all_ids:
+        v = world.get_actor(vid)
+        if v is None:
+            continue
+        traffic_manager.distance_to_leading_vehicle(v, 6.0)
+        traffic_manager.auto_lane_change(v, False)
+
+
+# ============================================================
+# Main
+# ============================================================
+def main():
+    pygame.init()
+
+    # ============================================================
+    # Client를 CARLA 시뮬레이터에 연결
+    # ============================================================
+    client = carla.Client('localhost', 2000)
+    client.set_timeout(10.0)
+    world = client.get_world()
+    original_settings = world.get_settings()
+    random.seed(0)
+
+    # ============================================================
+    # Synchronous 모드 설정
+    # ============================================================
+    settings = world.get_settings()
+    settings.synchronous_mode = True
+    settings.fixed_delta_seconds = 0.05
+    world.apply_settings(settings)
+
+    # ============================================================
+    # Traffic Manager를 연결
+    # ============================================================
+    traffic_manager = client.get_trafficmanager(8000)
+    traffic_manager.set_synchronous_mode(True)
+    traffic_manager.set_random_device_seed(0)
+    tm_port = traffic_manager.get_port()
+
+    # ============================================================
+    # Variable 초기화
+    # ============================================================
+    actor_ids = []
+    ego_vehicle = None
+    sensor = None
+
+    spectator = None
+    map_view_tf = None
+
+    follow_enabled = True
+    cam_mode_idx = 0
+    manual_enabled = False
+    reverse_toggle = False
+    steer_cache = 0.0
+
+    last_lines = []
+    last_print_t = 0.0
+
+    # pygame
+    screen = pygame.display.set_mode((WINDOW_W, WINDOW_H), pygame.HWSURFACE | pygame.DOUBLEBUF)
+    pygame.display.set_caption("NGV | LANE_INVASION | C:Cam | V:MapTop | Q:Manual | R:Reverse | ESC Quit")
+    font = pygame.font.SysFont("Arial", 18)
+
+    try:
+        # ============================================================
+        # 차량 Spawn (EGO + NPC)
+        # ============================================================
+        ego_vehicle, ego_tf, spawn_points = spawn_ego_vehicle(world, tm_port)
+        actor_ids.append(ego_vehicle.id)
+
+        npc_ids = spawn_npc_vehicles(client, world, tm_port, ego_tf)
+        actor_ids.extend(npc_ids)
+
+        # ============================================================
+        # TM 안전 세팅 적용 (차간거리 설정 등)
+        # ============================================================
+        apply_tm_safety_settings(world, traffic_manager, ego_vehicle, npc_ids)
+
+        # ============================================================
+        # Spectator / Map view 준비
+        # ============================================================
+        spectator = world.get_spectator()
+        map_center = compute_map_center_from_spawnpoints(spawn_points)
+        map_view_tf = map_view_tf_from_cfg(map_center, SPEC_CFG)
+
+        # ============================================================
+        # Lane Invasion Sensor 생성 및 부착
+        # ============================================================
+        ##### TODO 1 #####
+        # Lane Invasion 센서 blueprint 를 가져오세요 (id: "sensor.other.lane_invasion")
+        # 사용함수: world.get_blueprint_library().find("sensor.XXX") / 기능: 센서 id 에 해당하는 blueprint 반환
+        #################
+
+        lane_blueprint = ...
+
+        #################
+
+        ##### TODO 2 #####
+        # Lane Invasion 센서의 부착 위치/자세(Transform)를 정하세요 (보통 차량 중심)
+        #   - 좌표: x 앞(+) / y 오른쪽(+) / z 위(+) [m],  pitch - 아래 / yaw + 오른쪽(시계 방향) [도]
+        # 사용함수: carla.Transform(carla.Location(x=, y=, z=), carla.Rotation(pitch=, yaw=, roll=)) / 기능: 위치·자세 지정
+        # 주의: Rotation 위치 인자 순서 = (pitch, yaw, roll) -> 항상 이름=값 으로 작성
+        #################
+
+        lane_transform = carla.Transform(carla.Location(x=..., y=..., z=...), carla.Rotation(roll=..., pitch=..., yaw=...))
+
+        #################
+
+        ##### TODO 3 #####
+        # ego_vehicle 에 Lane Invasion 센서를 부착해 스폰하세요
+        # 사용함수: world.spawn_actor(blueprint, transform, attach_to) / 기능: 차량에 센서를 부착해 생성
+        #################
+
+        lane = ...
+
+        #################
+
+        def lane_callback(ev):
+            nonlocal last_lines, last_print_t
+            marks = [str(x.type) for x in ev.crossed_lane_markings] if ev.crossed_lane_markings else []
+
+            last_lines = [
+                "[LANE INVASION]",
+                f"crossed={marks}",
+            ]
+
+            now = time.time()
+            if now - last_print_t >= float(TERM_PRINT_INTERVAL_SEC):
+                last_print_t = now
+                print(f"[LANE] crossed={marks}")
+
+        ##### TODO 4 #####
+        # Lane Invasion 데이터 스트림을 listen 하세요 (콜백 등록)
+        # 사용함수: sensor.listen(callback) / 기능: 센서 데이터가 도착할 때마다 callback 실행
+        #   - sensor -> 이 파일의 센서 변수 이름, callback -> 바로 위에서 정의한 콜백 함수 이름 (괄호 없이 이름만 전달)
+        #################
+
+        ...
+
+        #################
+
+        sensor = lane
+
+        # ============================================================
+        # Main loop
+        # ============================================================
+        call_exit = False
+        while True:
+            world.tick()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    call_exit = True
+                elif event.type == pygame.KEYDOWN:
+                    mods = pygame.key.get_mods()
+
+                    if event.key == K_ESCAPE or (event.key == pygame.K_q and (mods & pygame.KMOD_CTRL)):
+                        call_exit = True
+
+                    elif event.key == pygame.K_c:
+                        cam_mode_idx = (cam_mode_idx + 1) % len(SPECTATOR_MODES)
+
+                    elif event.key == pygame.K_v:
+                        follow_enabled = not follow_enabled
+                        if (not follow_enabled) and spectator is not None and map_view_tf is not None:
+                            spectator.set_transform(map_view_tf)
+
+                    elif event.key == pygame.K_q:
+                        manual_enabled = not manual_enabled
+                        reverse_toggle = False
+                        steer_cache = 0.0
+                        if manual_enabled:
+                            ego_vehicle.set_autopilot(False, tm_port)
+                            print("[AUTOPILOT] OFF, MANUAL CONTROL ENABLED")
+                        else:
+                            ego_vehicle.set_autopilot(True, tm_port)
+                            print("[AUTOPILOT] ON, MANUAL CONTROL DISABLED")
+
+                    elif event.key == pygame.K_r:
+                        if manual_enabled:
+                            reverse_toggle = not reverse_toggle
+
+            if call_exit:
+                break
+
+            if manual_enabled and is_alive(ego_vehicle):
+                keys = pygame.key.get_pressed()
+                ctrl, steer_cache = build_vehicle_control(keys, steer_cache, reverse_toggle, MANUAL_CFG)
+                ego_vehicle.apply_control(ctrl)
+
+            if follow_enabled and spectator is not None and is_alive(ego_vehicle):
+                spectator.set_transform(
+                    spectator_follow_tf(ego_vehicle.get_transform(), SPECTATOR_MODES[cam_mode_idx], SPEC_CFG)
+                )
+
+            screen.fill((0, 0, 0))
+            hud = [
+                "Sensor: LANE_INVASION",
+                f"C:{SPECTATOR_MODES[cam_mode_idx]} | V:{'FOLLOW' if follow_enabled else 'MAP_TOP'} | Q:{'MANUAL' if manual_enabled else 'AUTO'} | R:{'ON' if reverse_toggle else 'OFF'}",
+                f"WORLD sync={world.get_settings().synchronous_mode}, dt={world.get_settings().fixed_delta_seconds}",
+            ]
+            hud.extend(last_lines)
+
+            y = 8
+            for line in hud:
+                screen.blit(font.render(line, True, (240, 240, 240)), (10, y))
+                y += 22
+
+            pygame.display.flip()
+
+    finally:
+        try:
+            if sensor is not None:
+                sensor.stop()
+                sensor.destroy()
+        except Exception:
+            pass
+
+        try:
+            if actor_ids:
+                client.apply_batch([carla.command.DestroyActor(x) for x in actor_ids])
+        except Exception:
+            pass
+
+        try:
+            world.apply_settings(original_settings)
+        except Exception:
+            pass
+
+        try:
+            pygame.quit()
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    main()

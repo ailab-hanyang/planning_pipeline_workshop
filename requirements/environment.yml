@@ -1,0 +1,14 @@
+name: planning_workshop
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - numpy>=1.24
+  - scipy>=1.15
+  - matplotlib>=3.10
+  - ipykernel
+  - ipywidgets
+  - pip:
+      - pygame>=2.6
+      # CARLA 클라이언트는 별도 설치 필요 (requirements_carla.txt 참고)

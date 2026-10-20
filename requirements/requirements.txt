@@ -1,0 +1,5 @@
+numpy>=1.24   # CARLA 예제 requirements(invertedai)가 numpy<2 를 요구 -> 1.24~2.x 모두 동작 확인
+scipy>=1.15
+matplotlib>=3.10
+ipykernel>=6.0
+ipywidgets>=8.0   # Day 2 step01 슬라이더 (VS Code 노트북은 ipykernel 만으로 실행)

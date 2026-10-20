@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# vscode
+.vscode/
+
+# 도구 캐시·작업 폴더
+.pi/
+.ruff_cache/
+
+# 실행 결과물 (로그 등)
+output/
+# 로그
+*.log
+
+# 강사용 도구 작업 폴더
+tools/eval/work/
+# LibreOffice 잠금 파일
+.~lock.*#
